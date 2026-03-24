@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-purple: #7C3AED;
+  --color-primary-blue: #4F46E5;
+  --color-primary-cyan: #06B6D4;
+  --color-secondary-green: #22C55E;
+  --color-secondary-orange: #F59E0B;
+  --color-secondary-red: #EF4444;
+  --color-dark: #0F172A;
+  --color-light: #F8FAFC;
+
+  --font-inter: "Inter", sans-serif;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-slate-50);
+    color: var(--color-slate-900);
+    font-family: var(--font-inter);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@utility glass-card {
+  background-color: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border-radius: 1rem;
+}
+
+@utility text-gradient {
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-image: linear-gradient(to right, var(--color-primary-purple), var(--color-primary-blue), var(--color-primary-cyan));
+}
+
+@utility bg-gradient-primary {
+  background-image: linear-gradient(to right, var(--color-primary-purple), var(--color-primary-blue), var(--color-primary-cyan));
+  color: white;
+}
