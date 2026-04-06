@@ -68,8 +68,11 @@ def setup_interview(request: schemas.InterviewSetupRequest, db: Session = Depend
     db.commit()
     db.refresh(new_session)
 
-    # Get first question
-    first_question = ai_service.generate_interview_question(request.job_role, request.category, request.difficulty, 1)
+    # Get first question — no prior questions yet
+    first_question = ai_service.generate_interview_question(
+        request.job_role, request.category, request.difficulty,
+        question_number=1, asked_questions=[]
+    )
 
     return {"session_id": new_session.id, "question": first_question}
 
@@ -115,9 +118,17 @@ def submit_interview_chat(request: schemas.InterviewTurnSubmit, db: Session = De
             is_completed=True
         )
 
-    # If not completed, generate next question
-    next_q = ai_service.generate_interview_question(session.job_role, session.category, session.difficulty, all_turns + 1)
-    
+    # Collect all questions already asked to guarantee uniqueness
+    existing_turns = db.query(models.InterviewTurn).filter(models.InterviewTurn.session_id == session.id).all()
+    asked_questions = [t.question for t in existing_turns]
+
+    # Generate next unique question
+    next_q = ai_service.generate_interview_question(
+        session.job_role, session.category, session.difficulty,
+        question_number=all_turns + 1,
+        asked_questions=asked_questions
+    )
+
     return schemas.NextTurnResponse(
         evaluation=schemas.EvaluationResponse(**eval_data),
         next_question=next_q,
