@@ -1,5 +1,7 @@
 import json
 import random
+import re
+import string
 
 # ─────────────────────────────────────────────────────────
 # QUESTION BANKS — role / category / tier
@@ -417,6 +419,31 @@ FALLBACK = {
 }
 
 # ─────────────────────────────────────────────────────────
+def normalize(text: str) -> str:
+    """Normalize text by lowercasing, stripping, and removing punctuation."""
+    if not text: return ""
+    # Remove punctuation
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    # Lowercase and strip
+    return " ".join(text.lower().split())
+
+
+RELEVANCE_MAP = {
+    "stack": ["lifo", "last in", "plate", "undo", "redo", "push", "pop"],
+    "queue": ["fifo", "first in", "line", "schedule", "bfs", "enqueue", "dequeue"],
+    "rest": ["http", "get", "post", "put", "delete", "stateless", "json", "endpoint", "resource"],
+    "sql": ["relational", "schema", "table", "acid", "transaction", "join", "query", "normalization"],
+    "nosql": ["document", "key-value", "flexible", "scalable", "schema", "mongodb", "dynamo"],
+    "oop": ["encapsulation", "abstraction", "inheritance", "polymorphism", "class", "object", "interface"],
+    "microservices": ["service", "decouple", "autonomous", "deploy", "network", "gateway", "monolith", "isolation"],
+    "solid": ["single responsibility", "open/closed", "liskov", "interface segregation", "dependency inversion"],
+    "ab test": ["hypothesis", "variant", "control", "metric", "confidence", "statistical", "significance"],
+    "churn": ["prediction", "attrition", "retention", "user", "behavior", "metric", "engagement"],
+    "cap theorem": ["consistency", "availability", "partition", "tolerance", "distributed", "eventual"],
+}
+
+
+# ─────────────────────────────────────────────────────────
 # HELPER: find the right bank
 # ─────────────────────────────────────────────────────────
 def _find_bank(role: str, category: str):
@@ -439,7 +466,8 @@ def generate_interview_question(
     question_number: int,
     asked_questions: list = None,
 ) -> str:
-    asked = set(asked_questions or [])
+    # Normalize asked questions for strict comparison
+    asked_normalized = {normalize(q) for q in (asked_questions or [])}
 
     # Tier based on question number (1-10)
     if question_number <= 3:
@@ -462,117 +490,118 @@ def generate_interview_question(
         tier_pool = FALLBACK[tier][:]
         all_pool = FALLBACK["basic"] + FALLBACK["intermediate"] + FALLBACK["advanced"]
 
+    # Try tier first
     random.shuffle(tier_pool)
     for q in tier_pool:
-        if q not in asked:
+        if normalize(q) not in asked_normalized:
             return q
 
-    # Fallback to any tier
+    # Fallback to any tier in the bank
     random.shuffle(all_pool)
     for q in all_pool:
-        if q not in asked:
+        if normalize(q) not in asked_normalized:
             return q
 
-    return tier_pool[0] if tier_pool else f"Describe an advanced challenge you've faced as a {role}."
+    # Final emergency fallback - shouldn't happen with 10 questions/session
+    fallback_q = random.choice(tier_pool) if tier_pool else f"Explain your approach to complex problem solving as a {role}."
+    return fallback_q
 
 
 # ─────────────────────────────────────────────────────────
 # ANSWER EVALUATION
 # ─────────────────────────────────────────────────────────
 def evaluate_answer(question: str, answer: str) -> dict:
+    # 1. Normalize for analysis
+    q_norm = normalize(question)
+    a_norm = normalize(answer)
     words = answer.split()
     word_count = len(words)
-    a = answer.lower()
+    
+    # 2. Check for "Refusal" or "Irrelevance"
+    refusal_signals = ["dont know", "do not know", "not sure", "no idea", "cant explain", "no clue"]
+    is_refusal = any(sig in a_norm for sig in refusal_signals)
+    
+    # 3. Semantic Relevance Check (Heuristic)
+    # Find relevant keywords for this question topic
+    relevant_keywords = []
+    for key, keywords in RELEVANCE_MAP.items():
+        if key in q_norm:
+            relevant_keywords.extend(keywords)
+    
+    # Check if any relevant keywords (if any) are in the answer
+    semantic_match = False
+    if relevant_keywords:
+        match_count = sum(1 for kw in relevant_keywords if kw in a_norm)
+        # Require at least 2 keywords for "Intermediate/Advanced" or 1 for "Basic" topics
+        semantic_match = match_count >= 1
+    else:
+        # If no specific relevance map, rely on general tech signals or just length
+        semantic_match = word_count >= 15
 
-    # ── Depth signals ──
-    has_example = any(p in a for p in [
-        "for example", "for instance", "such as", "like when",
-        "in my experience", "i worked on", "we implemented",
-        "at my previous", "in one project", "i once",
-    ])
-    has_structure = any(p in a for p in [
-        "first", "second", "third", "firstly", "additionally",
-        "furthermore", "however", "therefore", "in conclusion", "to summarize",
-    ])
-    tech_hits = sum(1 for kw in [
-        "algorithm", "architect", "framework", "pattern", "database",
-        "api", "cache", "scal", "perform", "optim", "deploy",
-        "refactor", "abstract", "encapsulat", "inherit", "polymorph",
-        "pipeline", "model", "metric", "cluster", "microservice",
-    ] if kw in a)
-    uncertain = any(p in a for p in ["i'm not sure", "i think maybe", "not really sure", "i don't know"])
+    # 4. Strict Scoring Logic
+    # 0-3: Refusal, Unrelated, or Extremely Brief (<10 words)
+    # 4-6: Partial (On topic but lacking depth/details)
+    # 7-8: Good (On topic, good detail, example/structure)
+    # 9-10: Excellent (Comprehensive, technical, structured, specific)
+    
+    score = 0
+    if is_refusal or not semantic_match or word_count < 15:
+        score = random.randint(1, 3)
+    else:
+        # Base score for on-topic answers
+        score = 5
+        # Structure/Depth bonuses
+        has_example = any(p in a_norm for p in ["example", "instance", "such as", "experience", "implemented", "project"])
+        has_structure = any(p in a_norm for p in ["first", "second", "third", "firstly", "additionally", "however", "therefore", "conclusion"])
+        tech_hits = sum(1 for kw in ["algorithm", "architect", "framework", "pattern", "logic", "system", "process", "deploy", "optim"] if kw in a_norm)
+        
+        if word_count >= 100: score += 2
+        elif word_count >= 50: score += 1
+        
+        if has_example: score += 1
+        if has_structure: score += 1
+        if tech_hits >= 2: score += 1
+        
+        score = min(10, score)
 
-    # ── Base score ──
-    score = 4
-    if word_count >= 100: score += 3
-    elif word_count >= 50: score += 2
-    elif word_count >= 25: score += 1
-    if has_example: score += 1
-    if has_structure: score += 1
-    score = min(10, max(3, score))
+    # 5. Forced Strict Evidence-Based Evaluation
+    snippet = " ".join(words[:6]) + "..." if len(words) > 6 else (answer or "[Empty Answer]")
+    
+    strengths = ""
+    weaknesses = ""
+    tip = ""
+    
+    if score <= 3:
+        strengths = "None identified. The response was either a refusal or largely unrelated to the specific question asked."
+        if is_refusal:
+            weaknesses = f"You explicitly stated you were unsure or didn't know the answer. In a real interview, this is high-risk. Your response '{snippet}' provides no value to the evaluator."
+        elif word_count < 15:
+            weaknesses = f"Your answer '{snippet}' was far too brief to demonstrate any technical competency or relevant knowledge."
+        else:
+            weaknesses = f"The response '{snippet}' lacked semantic relevance to the question. You failed to address the core concepts of {question.split('?')[0]}."
+        tip = "When you don't know an answer, try to explain your thought process or relate it to a concept you DO know rather than a flat refusal."
+    
+    elif score <= 6:
+        strengths = f"You correctly identified the topic and addressed it with '{snippet}', which shows basic awareness."
+        weaknesses = "Your answer lacks technical depth and specific examples. It's too generic and doesn't separate you from junior candidates."
+        tip = "Try using specific technical terminology and provide a 'Result' from a past experience using the STAR method."
+    
+    else:
+        strengths = f"Strong response. Your mention of {words[0]}... demonstrated clear understanding. Structure and detail were professional."
+        weaknesses = "Minor. Could be improved by mentioning specific trade-offs or alternative approaches (e.g. what happens if your chosen method fails?)"
+        tip = "To reach a 10/10, always conclude with a specific success metric or lesson learned from a real-world application."
 
-    # ── Sub-metrics ──
-    relevance          = min(10, max(2, score + (1 if has_example else 0)))
-    technical_accuracy = min(10, max(2, score + (1 if tech_hits >= 3 else (-1 if tech_hits == 0 else 0))))
-    communication      = min(10, max(2, score + (1 if has_structure else -1)))
-    confidence         = min(10, max(2, score + (1 if word_count >= 60 else 0) - (2 if uncertain else 0)))
-
-    # ── Strength (specific, varied) ──
-    strength_opts = []
-    if has_example:
-        strength_opts.append("Strengthened the answer with a concrete real-world example, which adds credibility and clarity.")
-    if has_structure:
-        strength_opts.append("Organised thoughts in a logical flow, making the response easy to follow.")
-    if word_count >= 60:
-        strength_opts.append("Provided a thorough, detailed response demonstrating solid domain understanding.")
-    if tech_hits >= 2:
-        strength_opts.append("Used precise technical vocabulary, signalling hands-on expertise.")
-    if not strength_opts:
-        strength_opts.append("Addressed the core of the question with a direct, honest attempt.")
-    strength = random.choice(strength_opts)
-
-    # ── Weakness (specific, varied) ──
-    weakness_opts = []
-    if not has_example:
-        weakness_opts.append("The response would benefit from a specific example or scenario to make the point tangible.")
-    if not has_structure:
-        weakness_opts.append("The answer lacked structured organisation; a clear beginning, middle, and conclusion would improve impact.")
-    if word_count < 30:
-        weakness_opts.append("The answer was too brief — a deeper explanation with supporting details is needed.")
-    if tech_hits == 0 and "technical" in question.lower():
-        weakness_opts.append("The response missed technical depth; incorporating domain-specific concepts would strengthen it significantly.")
-    if uncertain:
-        weakness_opts.append("Expressing uncertainty without reasoning through it signals low confidence — attempt a structured best-guess instead.")
-    if not weakness_opts:
-        weakness_opts.append("Consider exploring trade-offs and edge cases to elevate the answer to an expert level.")
-    weakness = random.choice(weakness_opts)
-
-    # ── Improvement tip ──
-    tips = [
-        "Use the STAR format (Situation, Task, Action, Result) — it keeps answers structured and memorable.",
-        "Add a real example: even a one-sentence scenario makes the response far more credible.",
-        "Quantify your impact (e.g., 'reduced latency by 40%') — numbers are persuasive in interviews.",
-        "Address trade-offs explicitly; showing awareness of limitations signals senior-level thinking.",
-        "Explain the 'why' behind your decisions, not just the 'what' — reasoning is what interviewers value most.",
-    ]
-    if not has_example: tip = tips[1]
-    elif not has_structure: tip = tips[0]
-    elif word_count < 40: tip = tips[2]
-    else: tip = tips[3]
-
-    # ── Ideal answer (question-keyed) ──
-    ideal = _ideal_for(question)
-
+    # 6. Final Pack
     return {
         "score": score,
-        "relevance": relevance,
-        "technical_accuracy": technical_accuracy,
-        "communication_clarity": communication,
-        "confidence": confidence,
-        "strengths": strength,
-        "weaknesses": weakness,
+        "relevance": min(10, score + (1 if semantic_match else -3)),
+        "technical_accuracy": min(10, score + (1 if score > 7 else -2)),
+        "communication_clarity": min(10, score + (1 if score > 5 else -1)),
+        "confidence": 3 if is_refusal else (min(10, score + 1)),
+        "strengths": strengths,
+        "weaknesses": weaknesses,
         "suggested_improvement": tip,
-        "ideal_sample_answer": ideal,
+        "ideal_sample_answer": _ideal_for(question),
     }
 
 

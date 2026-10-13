@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import API_URL from '../api';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
     BarChart, Bar, Cell
@@ -42,10 +43,10 @@ const Dashboard = () => {
             try {
                 const token = localStorage.getItem('token');
                 const [statsRes, historyRes] = await Promise.all([
-                    axios.get('http://localhost:8000/api/user/analytics', {
+                    axios.get(`${API_URL}/user/analytics`, {
                         headers: { Authorization: `Bearer ${token}` }
                     }),
-                    axios.get('http://localhost:8000/api/interview/history', {
+                    axios.get(`${API_URL}/interview/history`, {
                         headers: { Authorization: `Bearer ${token}` }
                     })
                 ]);

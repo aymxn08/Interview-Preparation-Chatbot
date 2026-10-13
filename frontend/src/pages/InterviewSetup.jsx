@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import API_URL from '../api';
 import { useAuth } from '../context/AuthContext';
 import { Briefcase, Layers, Settings, ArrowRight } from 'lucide-react';
 
@@ -22,7 +23,7 @@ const InterviewSetup = () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await axios.post('http://localhost:8000/api/interview/setup',
+            const res = await axios.post(`${API_URL}/interview/setup`,
                 { job_role: role, category, difficulty },
                 { headers: { Authorization: `Bearer ${token}` } }
             );

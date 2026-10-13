@@ -11,11 +11,17 @@ from database import engine
 # Create tables
 models.Base.metadata.create_all(bind=engine)
 
+import os
+
 app = FastAPI(title="PrepWise AI API")
+
+# In production, set ALLOWED_ORIGINS="https://your-app.vercel.app" on Render
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+allowed_origins = [o.strip() for o in allowed_origins_env.split(",")] if allowed_origins_env != "*" else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # For dev purposes
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,16 +124,27 @@ def submit_interview_chat(request: schemas.InterviewTurnSubmit, db: Session = De
             is_completed=True
         )
 
-    # Collect all questions already asked to guarantee uniqueness
-    existing_turns = db.query(models.InterviewTurn).filter(models.InterviewTurn.session_id == session.id).all()
-    asked_questions = [t.question for t in existing_turns]
+    # Collect all questions already asked in this session
+    existing_q = db.query(models.InterviewTurn.question).filter(models.InterviewTurn.session_id == session.id).all()
+    asked_questions = [q[0] for q in existing_q]
 
-    # Generate next unique question
+    # Generate next unique question (uses normalization internally)
     next_q = ai_service.generate_interview_question(
         session.job_role, session.category, session.difficulty,
         question_number=all_turns + 1,
         asked_questions=asked_questions
     )
+
+    # Double-check uniqueness before returning (defensive)
+    asked_norm = {ai_service.normalize(q) for q in asked_questions}
+    max_retries = 3
+    while ai_service.normalize(next_q) in asked_norm and max_retries > 0:
+        next_q = ai_service.generate_interview_question(
+            session.job_role, session.category, session.difficulty,
+            question_number=all_turns + 1,
+            asked_questions=asked_questions
+        )
+        max_retries -= 1
 
     return schemas.NextTurnResponse(
         evaluation=schemas.EvaluationResponse(**eval_data),
